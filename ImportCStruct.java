@@ -4,6 +4,21 @@
 //@menupath
 //@toolbar
 
+import java.awt.BorderLayout;
+import java.awt.Component;
+import java.awt.Dimension;
+import java.util.ArrayList;
+import java.util.List;
+
+import javax.swing.BoxLayout;
+import javax.swing.Icon;
+import javax.swing.JButton;
+import javax.swing.JComponent;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JSplitPane;
+import javax.swing.JTextArea;
+
 import docking.DialogComponentProvider;
 import docking.widgets.tree.GTree;
 import docking.widgets.tree.GTreeNode;
@@ -14,14 +29,6 @@ import ghidra.program.model.data.Category;
 import ghidra.program.model.data.DataType;
 import ghidra.program.model.data.DataTypeManager;
 import ghidra.util.exception.DuplicateNameException;
-
-import java.awt.BorderLayout;
-import java.awt.Component;
-import java.awt.Dimension;
-import java.util.ArrayList;
-import java.util.List;
-
-import javax.swing.*;
 
 public class ImportCStruct extends GhidraScript {
 
@@ -53,10 +60,10 @@ public class ImportCStruct extends GhidraScript {
 			return cat.getCategories().length <= 0;
 		}
     }
-
-
+    
     class ParseStructDialog extends DialogComponentProvider {
-        private final DataTypeManager dtm;
+        private final DataTypeManager programDtm;
+        private final BufferedDataTypeManager tempDtm;
         private final List<DataType> parsedTypes;
         
         private GTree categoryTree;
@@ -68,6 +75,7 @@ public class ImportCStruct extends GhidraScript {
         private JButton parseButton;
         
         private List<Runnable> whenShown;
+        private NameConflictHandler conflictHandler;
         
 
         private ParseStructDialog() {
@@ -78,7 +86,9 @@ public class ImportCStruct extends GhidraScript {
             whenShown = new ArrayList<>();
             
             // Parser Setup
-            dtm = currentProgram.getDataTypeManager();
+            programDtm = currentProgram.getDataTypeManager();
+            tempDtm =  new BufferedDataTypeManager("ImportCStructDialog", programDtm);
+            conflictHandler = new NameConflictHandler(state);
             
             // GUI SETUP
             this.addCancelButton();
@@ -125,7 +135,7 @@ public class ImportCStruct extends GhidraScript {
             var label = new JLabel("Select category for imported structs:");
             label.setAlignmentX(Component.LEFT_ALIGNMENT);
         	
-            var rootCat = dtm.getRootCategory();
+            var rootCat = programDtm.getRootCategory();
             var rootNode = buildCatTree(rootCat);
             var tree = new GTree(rootNode);
             tree.addSelectionPath(rootNode.getTreePath());
@@ -182,14 +192,27 @@ public class ImportCStruct extends GhidraScript {
 
         private void parseType() {
             var text = this.textInput.getText();
-            var parser = new CParser(dtm);
+            var parser = new CParser(tempDtm);
             DataType type;
             try {
+            	parser.parse(text);
+            	// TODO find out if we can get ALL parsed datatypes instead of the last one, make it possible to parse to name already taken in another category
                 type = parser.parse(text);
+                // parser.getTypes() is always empty so we canont get ALL parsed datatypes from there
             } catch (ParseException e) {
                 typeOutput.setText(e.toString());
-                this.setApplyEnabled(false);
                 return;
+            }
+            
+            var bufferedTypes = new ArrayList<DataType>();
+            tempDtm.getAllDataTypesBuffered(new ArrayList<>());
+            for (var dataType : bufferedTypes) {
+            	System.out.println(dataType.getName());// TODO does not work, dtm is empty
+            }
+            
+            if (type == null) {
+            	typeOutput.setText("No type was found in the provided source!");
+            	return;
             }
             
             var selectedNode = (CategoryTreeNode) categoryTree.getSelectionModel().getLeadSelectionPath().getLastPathComponent();
@@ -197,7 +220,7 @@ public class ImportCStruct extends GhidraScript {
             try {
 				type.setCategoryPath(selectedCategory.getCategoryPath());
 			} catch (DuplicateNameException e) {
-				// TODO show error to user
+				typeOutput.setText(e.toString());
 				return;
 			}
             
@@ -236,11 +259,11 @@ public class ImportCStruct extends GhidraScript {
 
         @Override
         protected void applyCallback() {
-            int transaction_id = dtm.startTransaction("Parsed");
+            int transaction_id = programDtm.startTransaction("Parsed");
             for (var type : parsedTypes) {
-            	dtm.addDataType(type, null);
+            	programDtm.addDataType(type, conflictHandler);
             }
-            dtm.endTransaction(transaction_id, true);
+            programDtm.endTransaction(transaction_id, true);
             this.close();
         }
     }
