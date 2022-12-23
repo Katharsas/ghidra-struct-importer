@@ -1,3 +1,4 @@
+package structimporter;
 import javax.swing.JButton;
 import javax.swing.JTextArea;
 

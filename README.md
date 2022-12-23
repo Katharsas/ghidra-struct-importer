@@ -7,5 +7,12 @@ Based on https://github.com/fmagin/ghidra_scripts/blob/master/ParseDataType.java
 ### Known issues
 - Parsed datatypes cannot depend on each other unless saved one by one
 
+### How to install
+- Code -> Download ZIP -> Extract anywhere
+- Open Ghidra project
+- Window -> Script Manager -> Button 'Manage script directories'
+- Add (Display file chooser) -> Select extracted folder that contains README.TXT
+- Window -> Script Manager -> Data Types -> ImportCStruct.java -> Run Script (or assign a key)
+
 ### Screenshot
 ![Screenshot](https://github.com/Katharsas/ghidra-struct-importer/blob/main/example_screenshot.png)
