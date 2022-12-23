@@ -11,7 +11,7 @@ Based on https://github.com/fmagin/ghidra_scripts/blob/master/ParseDataType.java
 - Code -> Download ZIP -> Extract anywhere
 - Open Ghidra project
 - Window -> Script Manager -> Button 'Manage script directories'
-- Add (Display file chooser) -> Select extracted folder that contains README.TXT
+- Add (Display file chooser) -> Select extracted folder that contains README.md
 - Window -> Script Manager -> Data Types -> ImportCStruct.java -> Run Script (or assign a key)
 
 ### Screenshot
