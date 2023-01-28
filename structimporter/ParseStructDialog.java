@@ -4,6 +4,7 @@ import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 
 import javax.swing.BoxLayout;
@@ -12,6 +13,7 @@ import javax.swing.JButton;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 
@@ -52,7 +54,6 @@ public class ParseStructDialog extends DialogComponentProvider {
     }
     	
     private final DataTypeManager programDtm;
-    private final BufferedDataTypeManager tempDtm;
     private final List<DataType> parsedTypes;
     
     private GTree categoryTree;
@@ -69,14 +70,13 @@ public class ParseStructDialog extends DialogComponentProvider {
 
     public ParseStructDialog(GhidraScript scriptContext) {
         super("Parse Data Type", false, true, true, true);
-        setPreferredSize(500, 400);
+        setPreferredSize(600, 500);
 
         parsedTypes = new ArrayList<>();
         whenShown = new ArrayList<>();
         
         // Parser Setup
         programDtm = scriptContext.getCurrentProgram().getDataTypeManager();
-        tempDtm =  new BufferedDataTypeManager("ImportCStructDialog", programDtm);
         conflictHandler = new NameConflictHandler(scriptContext.getState());
         
         // GUI SETUP
@@ -154,13 +154,12 @@ public class ParseStructDialog extends DialogComponentProvider {
         textInput.setWrapStyleWord(true);
         textInput.setLineWrap(true);
     	
-    	var container = new JPanel();
-        container.setLayout(new BoxLayout(container, BoxLayout.Y_AXIS));
-        container.add(selector);
-        container.add(textInput);
+    	var container = new JPanel(new BorderLayout());
+        container.add(selector, BorderLayout.NORTH);
+        container.add(new JScrollPane(textInput), BorderLayout.CENTER);
+        
         return container;
     }
-    
     
     private JComponent buildDataTypesGui() {
     	var typeInput = buildDataTypeInputGui();
@@ -172,7 +171,7 @@ public class ParseStructDialog extends DialogComponentProvider {
         typeOutput.setEditable(false);
         typeOutput.setMinimumSize(new Dimension(0, 0));// for splitpane
 
-        var splitter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, typeInput, typeOutput);
+        var splitter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, typeInput, new JScrollPane(typeOutput));
         whenShown.add(() -> {
         	splitter.setDividerLocation(0.5);
         });
@@ -181,53 +180,52 @@ public class ParseStructDialog extends DialogComponentProvider {
 
     private void parseType() {
         var text = this.textInput.getText();
-        var parser = new CParser(tempDtm);
-        DataType type;
+        var parser = new CParser(programDtm);
+        
         try {
         	parser.parse(text);
-        	// TODO find out if we can get ALL parsed datatypes instead of the last one, make it possible to parse to name already taken in another category
-            type = parser.parse(text);
-            // parser.getTypes() is always empty so we canont get ALL parsed datatypes from there
         } catch (ParseException e) {
+        	e.printStackTrace();
             typeOutput.setText(e.toString());
             return;
         }
         
-        var bufferedTypes = new ArrayList<DataType>();
-        tempDtm.getAllDataTypesBuffered(new ArrayList<>());
-        for (var dataType : bufferedTypes) {
-        	System.out.println(dataType.getName());// TODO does not work, dtm is empty
-        }
-        
-        if (type == null) {
+        var parsed = new HashMap<String, DataType>();
+        parsed.putAll(parser.getTypes());
+        parsed.putAll(parser.getComposites());
+        parsed.putAll(parser.getEnums());
+
+        if (parsed.isEmpty()) {
         	typeOutput.setText("No type was found in the provided source!");
         	return;
         }
         
         var selectedNode = (CategoryTreeNode) categoryTree.getSelectionModel().getLeadSelectionPath().getLastPathComponent();
-        var selectedCategory = selectedNode.cat;
-        try {
-			type.setCategoryPath(selectedCategory.getCategoryPath());
-		} catch (DuplicateNameException e) {
-			typeOutput.setText(e.toString());
-			return;
-		}
+        var selectedCategoryPath = selectedNode.cat.getCategoryPath();
         
-        parsedTypes.add(type);
-        createDataTypeListEntry(type);
-        typeOutput.setText(type.toString());
-        this.setApplyEnabled(true);
+        for (var type : parsed.values()) {
+        	try {
+				type.setCategoryPath(selectedCategoryPath);
+			} catch (DuplicateNameException e) {
+				typeOutput.setText(e.toString());
+				continue;
+			}
+        	createDataTypeListEntry(type);
+        	typeOutput.setText(type.toString());
+        	parsedTypes.add(type);
+        	this.setApplyEnabled(true);
+        }
     }
     
     private void createDataTypeListEntry(DataType type) {
-    	var container = new JPanel();
-        //container.setLayout(new BoxLayout(container, BoxLayout.X_AXIS));
+    	var container = new JPanel(new BorderLayout());
     	
-    	var label = new JLabel(type.getCategoryPath().getName() + " ->  " + type.getName());
-//        	var showButton = new JButton("show");
-//        	showButton.addActionListener(event -> {
-//        		// ...
-//        	});
+    	var category = programDtm.getRootCategory().getName() + "/" + type.getCategoryPath().getName();
+    	var label = new JLabel(" " + type.getName() + " (" + category + ")");
+    	var showButton = new JButton("show");
+    	showButton.addActionListener(event -> {
+    		typeOutput.setText(type.toString());
+    	});
     	var removeButton = new JButton("remove");
     	removeButton.addActionListener(event -> {
     		var index = parsedTypes.indexOf(type);
@@ -239,11 +237,15 @@ public class ParseStructDialog extends DialogComponentProvider {
     		parsedTypesPanel.revalidate();
     	});
     	
-        container.add(label, BorderLayout.LINE_START);
-//            container.add(showButton);
-        container.add(removeButton, BorderLayout.LINE_END);
+    	var buttonContainer = new JPanel(new BorderLayout());
+    	buttonContainer.add(showButton, BorderLayout.WEST);
+    	buttonContainer.add(removeButton, BorderLayout.EAST);
+        
+        container.add(label, BorderLayout.CENTER);
+        container.add(buttonContainer, BorderLayout.EAST);
     	
     	parsedTypesPanel.add(container);
+    	parsedTypesPanel.revalidate();
     }
 
     @Override

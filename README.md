@@ -5,7 +5,6 @@ Allows parsing single C structs that can have dependencies on arbitrary already 
 Based on https://github.com/fmagin/ghidra_scripts/blob/master/ParseDataType.java
 
 ### Known issues
-- Parsed datatypes cannot depend on each other unless saved one by one
 
 ### How to install
 - Code -> Download ZIP -> Extract anywhere
