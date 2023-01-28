@@ -21,7 +21,6 @@ import docking.DialogComponentProvider;
 import docking.widgets.tree.GTree;
 import docking.widgets.tree.GTreeNode;
 import ghidra.app.script.GhidraScript;
-import ghidra.app.util.cparser.C.CParser;
 import ghidra.app.util.cparser.C.ParseException;
 import ghidra.program.model.data.Category;
 import ghidra.program.model.data.DataType;
@@ -180,7 +179,7 @@ public class ParseStructDialog extends DialogComponentProvider {
 
     private void parseType() {
         var text = this.textInput.getText();
-        var parser = new CParser(programDtm);
+        var parser = new CParserFixed(programDtm);
         
         try {
         	parser.parse(text);
