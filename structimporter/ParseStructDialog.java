@@ -17,10 +17,13 @@ import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 
+import org.apache.commons.lang3.exception.ExceptionUtils;
+
 import docking.DialogComponentProvider;
 import docking.widgets.tree.GTree;
 import docking.widgets.tree.GTreeNode;
 import ghidra.app.script.GhidraScript;
+import ghidra.app.util.cparser.C.CParser;
 import ghidra.app.util.cparser.C.ParseException;
 import ghidra.program.model.data.Category;
 import ghidra.program.model.data.DataType;
@@ -179,13 +182,13 @@ public class ParseStructDialog extends DialogComponentProvider {
 
     private void parseType() {
         var text = this.textInput.getText();
-        var parser = new CParserFixed(programDtm);
+        var parser = new CParser(programDtm);
         
         try {
         	parser.parse(text);
         } catch (ParseException e) {
-        	e.printStackTrace();
-            typeOutput.setText(e.toString());
+        	var stackTrace = ExceptionUtils.getStackTrace(e);
+            typeOutput.setText(e.toString() + "\n\n" + stackTrace);
             return;
         }
         
