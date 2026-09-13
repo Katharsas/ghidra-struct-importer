@@ -3,9 +3,12 @@ package structimporter;
 import java.awt.BorderLayout;
 import java.awt.Component;
 import java.awt.Dimension;
+import java.awt.Insets;
+import java.awt.event.ActionEvent;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Objects;
 
 import javax.swing.BoxLayout;
 import javax.swing.Icon;
@@ -16,6 +19,8 @@ import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
+import javax.swing.SwingConstants;
+import javax.swing.UIManager;
 
 import org.apache.commons.lang3.exception.ExceptionUtils;
 
@@ -65,14 +70,18 @@ public class ParseStructDialog extends DialogComponentProvider {
     private JTextArea typeOutput;
 
     private JButton parseButton;
+    private JButton removeButton;
     
     private List<Runnable> whenShown;
     private NameConflictHandler conflictHandler;
     
+    private JComponent selectedEntry;
+    private DataType selectedType;
+    
 
     public ParseStructDialog(GhidraScript scriptContext) {
         super("Parse Data Type", false, true, true, true);
-        setPreferredSize(600, 500);
+        setPreferredSize(900, 500);
 
         parsedTypes = new ArrayList<>();
         whenShown = new ArrayList<>();
@@ -83,11 +92,6 @@ public class ParseStructDialog extends DialogComponentProvider {
         
         // GUI SETUP
         this.addCancelButton();
-        this.parseButton = new JButton("Parse");
-        this.parseButton.addActionListener(event -> { this.parseType();});
-        this.parseButton.setToolTipText("Parse the struct and preview the result");
-
-        this.addButton(parseButton);
 
         this.addApplyButton();
         this.setApplyToolTip("Add list of parsed types");
@@ -96,11 +100,11 @@ public class ParseStructDialog extends DialogComponentProvider {
         var categorySelectorGui = buildCategorySelectorGui();
         var textInputGui = buildDataTypesGui();
         
-        var splitter = new JSplitPane(JSplitPane.VERTICAL_SPLIT, categorySelectorGui, textInputGui);
+        var splitter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, categorySelectorGui, textInputGui);
 
         addWorkPanel(splitter);
         whenShown.add(() -> {
-        	splitter.setDividerLocation(0.3);
+        	splitter.setDividerLocation(0.23);
         });
     }
     
@@ -123,13 +127,14 @@ public class ParseStructDialog extends DialogComponentProvider {
     
     private JComponent buildCategorySelectorGui() {
     	// category tree
-        var label = new JLabel("Select category for imported structs:");
+        var label = new JLabel(" Insert types into category:");
         label.setAlignmentX(Component.LEFT_ALIGNMENT);
     	
         var rootCat = programDtm.getRootCategory();
         var rootNode = buildCatTree(rootCat);
         var tree = new GTree(rootNode);
         tree.addSelectionPath(rootNode.getTreePath());
+        tree.setAlignmentX(Component.LEFT_ALIGNMENT);
         
         this.categoryTree = tree;
         
@@ -150,15 +155,77 @@ public class ParseStructDialog extends DialogComponentProvider {
     }
     
     private JComponent buildDataTypeInputGui() {
-    	var selector = buildDataTypeListGui();
+    	var container = new JPanel(new BorderLayout());
     	
     	textInput = new JTextArea(12, 50);
         textInput.setWrapStyleWord(true);
         textInput.setLineWrap(true);
-    	
-    	var container = new JPanel(new BorderLayout());
-        container.add(selector, BorderLayout.NORTH);
         container.add(new JScrollPane(textInput), BorderLayout.CENTER);
+        
+        this.parseButton = new JButton("Parse");
+        this.parseButton.addActionListener(event -> { this.parseType();});
+        this.parseButton.setToolTipText("Parse the struct and preview the result");
+    	
+        container.add(this.parseButton, BorderLayout.SOUTH);
+        
+        return container;
+    }
+    
+    private void onRemove(ActionEvent e) {
+    	Objects.requireNonNull(selectedType);
+    	Objects.requireNonNull(selectedEntry);
+
+    	var index = parsedTypes.indexOf(selectedType);
+    	
+        parsedTypes.removeIf(t -> t == selectedType);
+        if (parsedTypes.isEmpty()) {
+            this.setApplyEnabled(false);
+        }
+        parsedTypesPanel.remove(selectedEntry);
+        parsedTypesPanel.revalidate();
+
+        selectedEntry = null;
+        selectedType = null;
+        
+        this.removeButton.setVisible(false);
+        typeOutput.setText("");
+        
+        // select item above
+        if (index >= parsedTypes.size()) {
+        	index = parsedTypes.size() - 1;
+        }
+        if (index >= 0 && index < parsedTypes.size()) {
+            var nextEntry = (JButton) parsedTypesPanel.getComponent(index);
+            var nextType = parsedTypes.get(index);
+            selectEntry(nextEntry, nextType);
+        }
+    }
+    
+    private JComponent buildDataTypeInfoGui() {
+    	typeOutput = new JTextArea(12, 50);
+        typeOutput.setWrapStyleWord(true);
+        typeOutput.setLineWrap(true);
+        typeOutput.setEditable(false);
+        typeOutput.setBackground(getBackground());
+    	
+    	var selector = buildDataTypeListGui();
+    	var selectorContainer = new JPanel();
+    	selectorContainer.setLayout(new BoxLayout(selectorContainer, BoxLayout.Y_AXIS));
+    	selectorContainer.add(selector);
+    	
+    	var splitter = new JSplitPane(JSplitPane.VERTICAL_SPLIT,
+    			new JScrollPane(typeOutput), new JScrollPane(selectorContainer));
+        whenShown.add(() -> {
+        	splitter.setDividerLocation(0.5);
+        });
+        
+        var container = new JPanel(new BorderLayout());
+        container.add(splitter, BorderLayout.CENTER);
+        
+        this.removeButton = new JButton("Remove");
+        this.removeButton.setVisible(false);
+        this.removeButton.addActionListener(this::onRemove);
+        container.add(this.removeButton, BorderLayout.SOUTH);
         
         return container;
     }
@@ -167,15 +234,12 @@ public class ParseStructDialog extends DialogComponentProvider {
     	var typeInput = buildDataTypeInputGui();
     	typeInput.setMinimumSize(new Dimension(0, 0));// for splitpane
     	
-        typeOutput = new JTextArea(12, 50);
-        typeOutput.setWrapStyleWord(true);
-        typeOutput.setLineWrap(true);
-        typeOutput.setEditable(false);
-        typeOutput.setMinimumSize(new Dimension(0, 0));// for splitpane
+    	var typeInfo = buildDataTypeInfoGui();
+    	typeInfo.setMinimumSize(new Dimension(0, 0));// for splitpane
 
-        var splitter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, typeInput, new JScrollPane(typeOutput));
+        var splitter = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, typeInput, typeInfo);
         whenShown.add(() -> {
-        	splitter.setDividerLocation(0.5);
+        	splitter.setDividerLocation(0.45);
         });
         return splitter;
     }
@@ -219,35 +283,34 @@ public class ParseStructDialog extends DialogComponentProvider {
         }
     }
     
-    private void createDataTypeListEntry(DataType type) {
-    	var container = new JPanel(new BorderLayout());
-    	
-    	var category = programDtm.getRootCategory().getName() + "/" + type.getCategoryPath().getName();
-    	var label = new JLabel(" " + type.getName() + " (" + category + ")");
-    	var showButton = new JButton("show");
-    	showButton.addActionListener(event -> {
-    		typeOutput.setText(type.toString());
-    	});
-    	var removeButton = new JButton("remove");
-    	removeButton.addActionListener(event -> {
-    		var index = parsedTypes.indexOf(type);
-    		parsedTypes.remove(index);
-    		if (parsedTypes.isEmpty()) {
-    			this.setApplyEnabled(false);
-    		}
-    		parsedTypesPanel.remove(index);
-    		parsedTypesPanel.revalidate();
-    	});
-    	
-    	var buttonContainer = new JPanel(new BorderLayout());
-    	buttonContainer.add(showButton, BorderLayout.WEST);
-    	buttonContainer.add(removeButton, BorderLayout.EAST);
+    private void selectEntry(JButton entryButton, DataType type) {
+        if (selectedEntry != null) {
+        	((JButton) selectedEntry).setBorderPainted(true);
+            selectedEntry.setBackground(null);
+        }
+
+        entryButton.setBorderPainted(false);
+        entryButton.setBackground(UIManager.getColor("Tree.selectionBackground"));
         
-        container.add(label, BorderLayout.CENTER);
-        container.add(buttonContainer, BorderLayout.EAST);
-    	
-    	parsedTypesPanel.add(container);
-    	parsedTypesPanel.revalidate();
+        selectedEntry = entryButton;
+        selectedType = type;
+        typeOutput.setText(type.toString());
+        removeButton.setVisible(true);
+    }
+    
+    private void createDataTypeListEntry(DataType type) {
+    	var category = programDtm.getRootCategory().getName() + "/" + type.getCategoryPath().getName();
+        var button = new JButton(type.getName() + " (" + category + ")");
+        button.setHorizontalAlignment(SwingConstants.LEFT);
+        button.setMargin(new Insets(2, 4, 2, 4));
+        button.setMaximumSize(new Dimension(Integer.MAX_VALUE, button.getPreferredSize().height));// for splitpane
+
+        button.addActionListener(event -> selectEntry(button, type));
+
+        parsedTypesPanel.add(button);
+        parsedTypesPanel.revalidate();
+        
+        selectEntry(button, type);
     }
 
     @Override
